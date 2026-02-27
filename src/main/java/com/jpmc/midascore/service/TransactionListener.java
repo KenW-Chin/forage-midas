@@ -5,8 +5,8 @@ import com.jpmc.midascore.foundation.Transaction;
 
 @Service
 public class TransactionListener {
-    @KafkaListener(topics = "${general.kafka-topic}")
-    public void getMessage (Transaction obj){
-        System.out.printf("Transaction {senderId=%d, recipientId=%d, amount=%f}", obj.getSenderId(), obj.getRecipientId(), obj.getAmount());
+    @KafkaListener(topics = "${general.kafka-topic}", groupId = "transaction-consumers")
+    public void getMessage (String transaction){
+        System.out.println("received");
     }
 }
