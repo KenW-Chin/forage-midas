@@ -1,7 +1,10 @@
-package com.jpmc.midascore.service;
+package com.jpmc.midascore;
+
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
+
 import com.jpmc.midascore.foundation.Transaction;
+import com.jpmc.midascore.service.TransactionService;
 
 @Service
 public class TransactionListener {
@@ -13,7 +16,7 @@ public class TransactionListener {
     }
     @KafkaListener(topics = "${general.kafka-topic}", groupId = "transaction-consumers")
     public void listen (Transaction transaction){
+        System.out.println("Listener triggered.");
         transactionService.processTransaction(transaction);
-        //send to TransactionService
     }
 }

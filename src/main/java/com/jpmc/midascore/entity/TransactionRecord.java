@@ -1,6 +1,4 @@
-package com.jpmc.midascore.service;
-
-import com.jpmc.midascore.entity.UserRecord;
+package com.jpmc.midascore.entity;
 
 import jakarta.persistence.*;
 
