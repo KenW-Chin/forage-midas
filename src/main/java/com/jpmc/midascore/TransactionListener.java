@@ -17,6 +17,7 @@ public class TransactionListener {
     @KafkaListener(topics = "${general.kafka-topic}", groupId = "transaction-consumers")
     public void listen (Transaction transaction){
         System.out.println("Listener triggered.");
-        transactionService.processTransaction(transaction);
+        Transaction t = transaction;
+        transactionService.processTransaction(t);
     }
 }

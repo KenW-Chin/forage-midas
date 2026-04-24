@@ -1,12 +1,16 @@
 package com.jpmc.midascore.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Optional;
-
+import com.jpmc.midascore.entity.TransactionRecord;
 import com.jpmc.midascore.entity.UserRecord;
 import com.jpmc.midascore.foundation.Transaction;
 import com.jpmc.midascore.repository.UserRepository;
+
+import org.springframework.transaction.annotation.Transactional;
+
+import com.jpmc.midascore.repository.TransactionRepository;
 
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
@@ -17,41 +21,72 @@ public class TransactionService{
     public static final Logger logger = LoggerFactory.getLogger(TransactionService.class);
 
     private final UserRepository userRepository;
+    private final TransactionRepository transactionRepository;
 
-    public TransactionService(UserRepository userRepository){
+    public TransactionService(UserRepository userRepository, TransactionRepository transactionRepository){
         this.userRepository = userRepository;
+        this.transactionRepository = transactionRepository;
     }
 
+    @Transactional
     public void processTransaction(Transaction kafkaTransaction){
-        if(!userRepository.existsById(kafkaTransaction.getSenderId()) || !userRepository.existsById(kafkaTransaction.getRecipientId())){
-            // decline
-            logger.info("Invalid Sender or Recipient ID. Please try again.");
-            return;
-        }
-        else{
-            UserRecord senderRec = userRepository.findById(kafkaTransaction.getSenderId());
-            UserRecord recepRec = userRepository.findById(kafkaTransaction.getRecipientId());
-            if(kafkaTransaction.getAmount() > senderRec.getBalance()){
-                // decline
-                logger.info("Amount of money sent exceeds current amount. Please try again.");
-                return;
-            }
-            else{
-                if (senderRec.getName() == "waldorf"){
-                    logger.info("Waldorf balance: {}", senderRec.getBalance());
-                }
-                if (recepRec.getName() == "waldorf"){
-                    logger.info("Waldorf balance: {}", recepRec.getBalance());
-                }  
-                recepRec.setBalance(recepRec.getBalance() + kafkaTransaction.getAmount());
-                senderRec.setBalance(senderRec.getBalance() - kafkaTransaction.getAmount());
-                // save recep
-                userRepository.save(recepRec);
-                // save sender
-                userRepository.save(senderRec);
-                // create and save transactionRecord
-            }
 
+        UserRecord sender = userRepository.findById(kafkaTransaction.getSenderId()).orElse(null);
+        UserRecord recipient = userRepository.findById(kafkaTransaction.getRecipientId()).orElse(null);
+        
+        boolean isValid = validateTransaction(kafkaTransaction, sender, recipient);
+        
+        if(isValid) {
+            // Execute the transaction
+            executeTransaction(kafkaTransaction, sender, recipient);
+            logger.info("Transaction executed successfully: {}", kafkaTransaction);
+        } else {
+            logger.warn("Transaction validation failed: {}", kafkaTransaction);
         }
+        // create and save transactionRecord
+        TransactionRecord record = TransactionRecord.fromTransaction(kafkaTransaction, sender, recipient, isValid);
+        transactionRepository.save(record);
+        logger.info("Transaction recorded: {}", record);
     }
+
+    private boolean validateTransaction(Transaction kafkaTransaction, UserRecord sender, UserRecord recipient){
+        if (sender == null) {
+            logger.warn("Sender with ID {} not found", kafkaTransaction.getSenderId());
+            return false;
+        }
+        if (recipient == null) {
+            logger.warn("Recipient with ID {} not found", kafkaTransaction.getRecipientId());
+            return false;
+        }
+
+        if (sender.getBalance() < kafkaTransaction.getAmount()) {
+            logger.warn("Insufficient balance for sender {}: required {}, available {}",
+                sender.getName(), kafkaTransaction.getAmount(), sender.getBalance()
+            );
+            return false;
+        }
+
+        if (kafkaTransaction.getAmount() <= 0) {
+            logger.warn("Invalid transaction amount: {}", kafkaTransaction.getAmount());
+            return false;
+        }
+
+        return true;
+    }
+
+    private void executeTransaction(Transaction kafkaTransaction, UserRecord sender, UserRecord recipient){
+        float newSenderBalance = sender.getBalance() - kafkaTransaction.getAmount();
+        sender.setBalance(newSenderBalance);
+        userRepository.save(sender);
+
+        float newRecipientBalance = recipient.getBalance() + kafkaTransaction.getAmount();
+        recipient.setBalance(newRecipientBalance);
+        userRepository.save(recipient);
+
+        logger.info("Balances updated - Sender {}: {} -> {}, Recipient {}: {} -> {}",
+            sender.getName(), sender.getBalance() + kafkaTransaction.getAmount(), newSenderBalance,
+            recipient.getName(), recipient.getBalance() - kafkaTransaction.getAmount(), newRecipientBalance
+        );
+    }
+    
 }
